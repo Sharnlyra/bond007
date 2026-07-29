@@ -18,7 +18,7 @@ on:
   pull_request:
 
 env:
-  REPORTS_REPO: YOUR_ORG/scanoss-reports
+  REPORTS_REPO: bond007/scanoss-reports
   REPORTS_REPO_BRANCH: main
 
 jobs:
