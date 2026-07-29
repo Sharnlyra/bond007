@@ -94,7 +94,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPORTS_REPO_TOKEN }}
         run: |
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPORTS_REPO}.git" repo_b
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${scanoss-reports}.git" repo_b
           cd repo_b
           git checkout "${REPORTS_REPO_BRANCH}"
 
