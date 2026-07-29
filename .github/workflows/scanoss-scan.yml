@@ -18,7 +18,7 @@ on:
   pull_request:
 
 env:
-  REPORTS_REPO: bond007/scanoss-reports
+  REPORTS_REPO: YOUR_ORG/scanoss-reports
   REPORTS_REPO_BRANCH: main
 
 jobs:
@@ -43,7 +43,6 @@ jobs:
           scanoss-py scan . \
             --apiurl https://api.scanoss.com \
             --key "${SCANOSS_API_KEY}" \
-            --dependencies \
             --output results.json
         env:
           SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
