@@ -1,0 +1,111 @@
+# Path in Repo A: .github/workflows/scanoss-scan.yml
+#
+# Prereqs (repo secrets on Repo A):
+#   SCANOSS_API_KEY     - your SCANOSS trial API key
+#   REPORTS_REPO_TOKEN   - fine-grained PAT with Contents: Read/Write on the reports repo only
+#
+# Dependency-Track integration is currently disabled (commented out below).
+# Add DT_SERVER_URL and DT_API_KEY secrets and uncomment that step later
+# once a reachable Dependency-Track instance is available.
+#
+# Adjust REPORTS_REPO below to your dedicated reports repository.
+
+name: SCANOSS Scan and Publish
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+
+env:
+  REPORTS_REPO: bond007/scanoss-reports
+  REPORTS_REPO_BRANCH: main
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install scanoss-py
+        run: pip install --upgrade scanoss
+
+      - name: Run SCA scan (raw results, includes snippet matching)
+        run: |
+          scanoss-py scan . \
+            --apiurl https://api.scanoss.com \
+            --key "${SCANOSS_API_KEY}" \
+            --dependencies \
+            --output results.json
+        env:
+          SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
+
+      - name: Generate CycloneDX SBOM (kept for future Dependency-Track use)
+        run: |
+          scanoss-py scan . \
+            --apiurl https://api.scanoss.com \
+            --key "${SCANOSS_API_KEY}" \
+            --format cyclonedx \
+            --output sbom.json
+        env:
+          SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
+
+      # --- Dependency-Track upload disabled for now ---
+      # Once DT is running somewhere reachable from GitHub Actions
+      # (not localhost), uncomment this step and add DT_SERVER_URL /
+      # DT_API_KEY as repo secrets.
+      #
+      # - name: Upload SBOM to Dependency-Track
+      #   run: |
+      #     curl -sS -X POST "${DT_SERVER_URL}/api/v1/bom" \
+      #       -H "X-Api-Key: ${DT_API_KEY}" \
+      #       -F "project=${{ github.repository }}" \
+      #       -F "projectVersion=${{ github.sha }}" \
+      #       -F "autoCreate=true" \
+      #       -F "bom=@sbom.json"
+      #   env:
+      #     DT_SERVER_URL: ${{ secrets.DT_SERVER_URL }}
+      #     DT_API_KEY: ${{ secrets.DT_API_KEY }}
+
+      - name: Assemble report bundle
+        run: |
+          mkdir -p report_out
+          cp results.json report_out/results.json
+          cp sbom.json report_out/sbom.json
+          cat > report_out/meta.json <<EOF
+          {
+            "repo": "${{ github.repository }}",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "actor": "${{ github.actor }}",
+            "event": "${{ github.event_name }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Push report to reports repo
+        env:
+          GH_TOKEN: ${{ secrets.REPORTS_REPO_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${REPORTS_REPO}.git" repo_b
+          cd repo_b
+          git checkout "${REPORTS_REPO_BRANCH}"
+
+          DEST="reports/${{ github.repository }}/${{ github.sha }}"
+          mkdir -p "$DEST"
+          cp ../report_out/* "$DEST/"
+
+          git config user.name "scanoss-bot"
+          git config user.email "scanoss-bot@users.noreply.github.com"
+          git add .
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Add scan report for ${{ github.repository }}@${{ github.sha }}"
+          git push origin "${REPORTS_REPO_BRANCH}"
