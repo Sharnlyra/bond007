@@ -18,7 +18,7 @@ on:
   pull_request:
 
 env:
-  REPORTS_REPO: sharnlyra/scanoss-reports
+  REPORTS_REPO: YOUR_ORG/scanoss-reports
   REPORTS_REPO_BRANCH: main
 
 jobs:
@@ -57,6 +57,22 @@ jobs:
         env:
           SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
 
+      - name: Run SCANOSS Crypto Finder (CBOM)
+        run: |
+          mkdir -p crypto_out
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace/code:ro" \
+            -v "${{ github.workspace }}/crypto_out:/workspace/output" \
+            -e SCANOSS_API_KEY="${SCANOSS_API_KEY}" \
+            ghcr.io/scanoss/crypto-finder:latest \
+            scan --format cyclonedx --output /workspace/output/cbom.json /workspace/code
+        env:
+          SCANOSS_API_KEY: ${{ secrets.SCANOSS_API_KEY }}
+        continue-on-error: true
+        # continue-on-error is set so a Crypto Finder hiccup (e.g. rate limit,
+        # unsupported language) doesn't fail the whole SCA pipeline. Remove
+        # this once you've confirmed it runs reliably in your environment.
+
       # --- Dependency-Track upload disabled for now ---
       # Once DT is running somewhere reachable from GitHub Actions
       # (not localhost), uncomment this step and add DT_SERVER_URL /
@@ -79,6 +95,11 @@ jobs:
           mkdir -p report_out
           cp results.json report_out/results.json
           cp sbom.json report_out/sbom.json
+          if [ -f crypto_out/cbom.json ]; then
+            cp crypto_out/cbom.json report_out/cbom.json
+          else
+            echo "No CBOM generated for this commit" 
+          fi
           cat > report_out/meta.json <<EOF
           {
             "repo": "${{ github.repository }}",
