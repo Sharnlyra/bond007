@@ -18,7 +18,7 @@ on:
   pull_request:
 
 env:
-  REPORTS_REPO: YOUR_ORG/scanoss-reports
+  REPORTS_REPO: sharnlyra/scanoss-reports
   REPORTS_REPO_BRANCH: main
 
 jobs:
@@ -61,6 +61,7 @@ jobs:
         run: |
           mkdir -p crypto_out
           docker run --rm \
+            --user "$(id -u):$(id -g)" \
             -v "${{ github.workspace }}:/workspace/code:ro" \
             -v "${{ github.workspace }}/crypto_out:/workspace/output" \
             -e SCANOSS_API_KEY="${SCANOSS_API_KEY}" \
@@ -72,6 +73,11 @@ jobs:
         # continue-on-error is set so a Crypto Finder hiccup (e.g. rate limit,
         # unsupported language) doesn't fail the whole SCA pipeline. Remove
         # this once you've confirmed it runs reliably in your environment.
+        #
+        # --user "$(id -u):$(id -g)" makes the container write cbom.json as
+        # the runner's own user instead of root, so later steps (which run
+        # as the runner user, not root) can actually read the file. Without
+        # this, "cp crypto_out/cbom.json" fails with Permission denied.
 
       # --- Dependency-Track upload disabled for now ---
       # Once DT is running somewhere reachable from GitHub Actions
@@ -95,10 +101,10 @@ jobs:
           mkdir -p report_out
           cp results.json report_out/results.json
           cp sbom.json report_out/sbom.json
-          if [ -f crypto_out/cbom.json ]; then
-            cp crypto_out/cbom.json report_out/cbom.json
+          if [ -f crypto_out/cbom.json ] && cp crypto_out/cbom.json report_out/cbom.json 2>/dev/null; then
+            echo "CBOM copied into report bundle"
           else
-            echo "No CBOM generated for this commit" 
+            echo "No usable CBOM for this commit (missing or unreadable) - continuing without it"
           fi
           cat > report_out/meta.json <<EOF
           {
